@@ -1,84 +1,56 @@
-import { useState, useEffect } from 'react' 
-import { storageService } from './services/async-storage.service'
+import { useState, useEffect } from 'react'
+import { useSelector, useDispatch } from 'react-redux'
+import { AppDispatch } from './store/store'
+import { loadTodos, addTodo, updateTodo, removeTodo } from './store/todo.slice'
+import { Trash2, Edit2, Plus, Check, Loader2 } from 'lucide-react'
 import type { Todo } from './types/todo'
-import { Trash2, Edit2, Plus, Check } from 'lucide-react'
-
-const TODO_KEY = 'todo_db'
 
 export default function App() {
-    const [todos, setTodos] = useState<Todo[]>([])
+    const { todos, isLoading } = useSelector((state: RootState) => state.todoModule)
+    const dispatch = useDispatch<AppDispatch>()
+
     const [newTaskText, setNewTaskText] = useState('')
     const [editingId, setEditingId] = useState<string | null>(null)
     const [editText, setEditText] = useState('')
 
     useEffect(() => {
-    let ignore = false
-    storageService.query<Todo>(TODO_KEY)
-        .then(data => { if (!ignore) setTodos(data) })
-        .catch(err => console.error('Had issues loading todos', err))
-    return () => { ignore = true }
-}, [])
+        dispatch(loadTodos())
+    }, [dispatch])
 
-    // Create
-    async function handleAdd(e: React.FormEvent) {
+    const onAddTodo = (e: React.FormEvent) => {
         e.preventDefault()
         if (!newTaskText.trim()) return
-
-        const newTodo = { text: newTaskText, isDone: false }
-        const savedTodo = await storageService.post<typeof newTodo>(TODO_KEY, newTodo)
-        
-        setTodos(prev => [...prev, savedTodo])
+        dispatch(addTodo(newTaskText))
         setNewTaskText('')
     }
 
-    // Update (Edit Text)
-    async function handleSaveEdit(todo: Todo) {
-        if (!editText.trim()) {
-            setEditingId(null)
-            return
-        }
-        const updatedTodo = { ...todo, text: editText }
-        const saved = await storageService.put<Todo>(TODO_KEY, updatedTodo)
-        
-        setTodos(prev => prev.map(t => t.id === saved.id ? saved : t))
+    const onToggleDone = (todo: Todo) => {
+        dispatch(updateTodo({ ...todo, isDone: !todo.isDone }))
+    }
+
+    const onSaveEdit = (todo: Todo) => {
+        if (!editText.trim()) return setEditingId(null)
+        dispatch(updateTodo({ ...todo, text: editText }))
         setEditingId(null)
     }
 
-    // Update (Toggle Done)
-    async function handleToggleDone(todo: Todo) {
-        const updatedTodo = { ...todo, isDone: !todo.isDone }
-        const saved = await storageService.put<Todo>(TODO_KEY, updatedTodo)
-        setTodos(prev => prev.map(t => t.id === saved.id ? saved : t))
-    }
-
-    // Delete
-    async function handleRemove(id: string) {
-        await storageService.remove(TODO_KEY, id)
-        setTodos(prev => prev.filter(t => t.id !== id))
-    }
-
-    function startEditing(todo: Todo) {
-        setEditingId(todo.id)
-        setEditText(todo.text)
-    }
-
     return (
-        <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 text-slate-800">
+        <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
             <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6">
-                <h1 className="text-2xl font-bold text-center mb-6">Minimal Tasker</h1>
+                <header className="flex items-center justify-between mb-8">
+                    <h1 className="text-2xl font-bold text-slate-800">Redux Master</h1>
+                    {isLoading && <Loader2 className="animate-spin text-blue-500" size={20} />}
+                </header>
 
-                <form onSubmit={handleAdd} className="flex gap-2 mb-6">
+                <form onSubmit={onAddTodo} className="flex gap-2 mb-6">
                     <input 
                         type="text" 
                         value={newTaskText}
                         onChange={(e) => setNewTaskText(e.target.value)}
-                        placeholder="Add a new task..."
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                        placeholder="What's next?"
+                        className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
                     />
-                    <button 
-                        type="submit" 
-                        className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition flex items-center justify-center"
-                    >
+                    <button className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition">
                         <Plus size={24} />
                     </button>
                 </form>
@@ -86,56 +58,39 @@ export default function App() {
                 <div className="space-y-3">
                     {todos.map(todo => (
                         <div key={todo.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 group">
-                            
                             <div className="flex items-center gap-3 flex-1 overflow-hidden">
                                 <input 
                                     type="checkbox" 
                                     checked={todo.isDone}
-                                    onChange={() => handleToggleDone(todo)}
-                                    className="w-5 h-5 text-blue-600 rounded cursor-pointer"
+                                    onChange={() => onToggleDone(todo)}
+                                    className="w-5 h-5 cursor-pointer"
                                 />
-                                
                                 {editingId === todo.id ? (
                                     <input 
-                                        type="text"
                                         autoFocus
                                         value={editText}
                                         onChange={(e) => setEditText(e.target.value)}
-                                        onBlur={() => handleSaveEdit(todo)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(todo)}
-                                        className="flex-1 bg-white border border-blue-300 rounded px-2 py-1 focus:outline-none"
+                                        onBlur={() => onSaveEdit(todo)}
+                                        onKeyDown={(e) => e.key === 'Enter' && onSaveEdit(todo)}
+                                        className="flex-1 bg-white border border-blue-300 rounded px-2 py-1 outline-none"
                                     />
                                 ) : (
-                                    <span 
-                                        className={`flex-1 truncate ${todo.isDone ? 'line-through text-slate-400' : 'text-slate-700'}`}
-                                        onDoubleClick={() => startEditing(todo)}
-                                    >
+                                    <span className={`flex-1 truncate ${todo.isDone ? 'line-through text-slate-400' : 'text-slate-700'}`}>
                                         {todo.text}
                                     </span>
                                 )}
                             </div>
-
-                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                {editingId === todo.id ? (
-                                    <button onClick={() => handleSaveEdit(todo)} className="text-green-500 hover:text-green-600 p-1">
-                                        <Check size={18} />
-                                    </button>
-                                ) : (
-                                    <button onClick={() => startEditing(todo)} className="text-slate-400 hover:text-blue-500 p-1">
-                                        <Edit2 size={18} />
-                                    </button>
-                                )}
-                                <button onClick={() => handleRemove(todo.id)} className="text-slate-400 hover:text-red-500 p-1">
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => { setEditingId(todo.id); setEditText(todo.text); }} className="text-slate-400 hover:text-blue-500 p-1">
+                                    <Edit2 size={18} />
+                                </button>
+                                <button onClick={() => dispatch(removeTodo(todo.id))} className="text-slate-400 hover:text-red-500 p-1">
                                     <Trash2 size={18} />
                                 </button>
                             </div>
-
                         </div>
                     ))}
-
-                    {todos.length === 0 && (
-                        <p className="text-center text-slate-400 text-sm mt-8">Your list is empty. Add a task above.</p>
-                    )}
+                    {!isLoading && !todos.length && <p className="text-center text-slate-400 text-sm mt-8">Empty list. Start coding!</p>}
                 </div>
             </div>
         </div>
